@@ -43,6 +43,7 @@ data/bdd100k/
 data/parsed/
 *.json
 !configs/*.json
+!output-Data_Analysis/*.json
 
 # Model checkpoints and outputs
 runs/

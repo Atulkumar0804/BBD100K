@@ -1,0 +1,31 @@
+# YOLOv11 Data Configuration for BDD100K
+# This file defines the dataset structure for training
+
+# Dataset root path (absolute path)
+path: /home/atul/Desktop/atul/Bosch/bosch-bdd-object-detection/data/bdd100k
+
+# Training and validation image directories
+train: images/100k/train
+val: images/100k/val
+
+# Number of classes
+nc: 10
+
+# Class names (All 10 BDD100K object detection classes)
+# Excluding: drivable area, lane (segmentation classes)
+names:
+  0: person
+  1: rider
+  2: car
+  3: truck
+  4: bus
+  5: train
+  6: motor
+  7: bike
+  8: traffic light
+  9: traffic sign
+
+# Additional dataset information
+dataset: BDD100K
+task: object_detection
+version: 1.0

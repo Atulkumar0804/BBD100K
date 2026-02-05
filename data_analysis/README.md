@@ -1,140 +1,93 @@
-# BDD100K Data Analysis
+# Data Analysis Pipeline
 
-This folder contains the data analysis pipeline for the BDD100K **object detection** labels. It parses the BDD100K JSON labels, computes summary statistics, exports analysis results as JSON, generates plots, and optionally serves a Streamlit dashboard.
+This directory contains the complete data analysis and visualization pipeline for the BDD100K object detection dataset. It includes tools for parsing annotations, generating statistical reports, creating visualizations, and hosting an interactive dashboard.
 
-## What this pipeline does
+## Overview
 
-1. **Parse labels** into clean dataclasses for images and bounding boxes.
-2. **Compute analysis metrics** (class balance, bbox sizes, anomalies, etc.).
-3. **Save results** to `output-Data_Analysis/analysis_results.json`.
-4. **Generate plots** under `output-Data_Analysis/visualizations/` and sample images under `output-Data_Analysis/interesting_samples/`.
-5. **View results** in a Streamlit dashboard with tabs and image galleries.
+The pipeline performs the following structured tasks:
+1.  **Parsing**: Reads raw BDD100K JSON files and converts them into structured Python objects.
+2.  **Analysis**: Computes comprehensive statistics including class distribution, object sizes, and anomaly detection.
+3.  **Visualization**: Generates high-quality static plots and annotated sample images.
+4.  **Reporting**: Aggregates findings into a generic JSON report and an interactive Streamlit dashboard.
 
-## Folder inputs & outputs (expected)
+## Directory Structure
 
-**Inputs** (typically in `../data`):
-- `data/labels/train.json`
-- `data/labels/val.json`
-- `data/images/train/`
-- `data/images/val/`
+Files in this directory and their roles:
 
-**Outputs** (typically in `../output-Data_Analysis`):
-- `output-Data_Analysis/analysis_results.json`
-- `output-Data_Analysis/visualizations/*.png`
-- `output-Data_Analysis/interesting_samples/*.jpg`
+-   `analysis.py`: Main analysis script. Calculates metrics and detects anomalies (e.g., empty labels, tiny objects).
+-   `dashboard.py`: Streamlit application for interactive exploration of the analysis results.
+-   `parser.py`: Utility module defining data structures (`BoundingBox`, `ImageAnnotation`) and parsing logic.
+-   `visualize.py`: Generates static plots (bar charts, heatmaps) and visualizes interesting sample images with metadata overlays.
+-   `convert_to_yolo.py`: Helper script to convert BDD100K JSON annotations into YOLO-compatible `.txt` files.
+-   `download_dataset.py`: Utility to download the dataset if not present locally.
 
-> Paths are configurable via CLI arguments; see commands below.
+## Usage Instructions
 
-## Key insights (from analysis)
-
-- Traffic lights are predominantly tiny objects.
-- Cars dominate instance count → class imbalance.
-- Val split slightly underrepresents rare classes.
-- Crowded scenes concentrate many objects in a few images.
-
-These findings motivated the choice of a multi-scale detector in the modeling stage.
-
-## What’s new in the latest pipeline
-- **Exact image counts**: label totals vs disk totals.
-- **Missing-label detection**: images on disk without label entries.
-- **Empty-label detection**: label entries with no valid boxes.
-- **High-DPI plots**: visualizations saved at higher resolution.
-- **Expanded plots**: pie charts, CDFs, co-occurrence, spatial heatmaps.
-- **Dashboard galleries**: 2-column image grids with per-image explanations.
-
-## How the scripts connect
-
-```
-parser.py  ──>  analysis.py  ──>  visualize.py  ──>  dashboard.py
-                  │                 │
-                  └── results JSON ─┘
-```
-
-## File-by-file responsibilities
-
-### `parser.py`
-- Defines dataclasses: `BoundingBox`, `ImageAnnotation`.
-- Defines `DETECTION_CLASSES` list (10 detection classes).
-- `parse_bdd_json()` reads BDD100K label JSON and returns structured annotations.
-- `iter_all_objects()` yields all boxes across images.
-
-### `analysis.py`
-- Core analysis pipeline (`BDD100KAnalyzer`).
-- Computes:
-  - **Class distribution** (instances and images per class).
-  - **Objects per image** distribution.
-  - **BBox sizes** (stats + size buckets).
-  - **Train/val balance** ratios.
-  - **Anomalies** (empty images, tiny boxes, crowded scenes).
-  - **Interesting samples** (largest/smallest per class, crowded, rare-only).
-- Saves results to JSON for downstream plotting and dashboard.
-- Adds image-level counts (labels vs disk), missing label entries, and empty label entries.
-
-### `visualize.py`
-- Generates static plots from `analysis_results.json` (high DPI).
-- Exports example images with drawn boxes for “interesting samples”.
-- Produces files under:
-  - `output-Data_Analysis/visualizations/`
-  - `output-Data_Analysis/interesting_samples/`
-
-### `dashboard.py`
-- Streamlit app with tabs for metrics, tables, plots, and samples.
-- Loads `output-Data_Analysis/analysis_results.json` and renders a 2-column image gallery.
-- Shows a short explanation under each plot/sample.
-
-### `convert_to_yolo.py`
-- Utility to convert BDD100K JSON labels to YOLO-format `.txt` labels.
-- Outputs per-image label files in YOLO format (normalized coordinates).
-- This is **preprocessing**, not analysis, but is kept here for dataset prep.
-
-### `Dockerfile`
-- Container definition for running the analysis pipeline in isolation.
-
-## Typical workflow
-
-### 1) Run analysis
-
+### 1. Run the Analysis
+Execute the main analysis script to generate the statistics file (`analysis_results.json`).
 ```bash
-cd /home/atul/Desktop/atul/Bosch/bosch-bdd-object-detection
-python3 data_analysis/analysis.py --dataset_dir data --output_dir output-Data_Analysis
+python data_analysis/analysis.py
 ```
+*   **Input**: `data/bdd100k/labels/` and `data/bdd100k/images/`
+*   **Output**: `output-Data_Analysis/analysis_results.json`
 
-### 2) Generate plots and sample images
-
+### 2. Generate Visualizations
+Create static plots and annotated sample images.
 ```bash
-python3 data_analysis/visualize.py --dataset_dir data --output_dir output-Data_Analysis
+python data_analysis/visualize.py
 ```
+*   **Output**: `output-Data_Analysis/visualizations/` and `output-Data_Analysis/interesting_samples/`
 
-### 3) Launch dashboard
-
+### 3. Launch Dashboard
+Start the interactive dashboard to view the results in a browser.
 ```bash
 streamlit run data_analysis/dashboard.py
 ```
 
-## CLI options (quick reference)
+### 4. Convert Labels (Optional)
+If training a YOLO model, convert the labels to the required format.
+```bash
+python data_analysis/convert_to_yolo.py
+```
 
-### `analysis.py`
-- `--dataset_dir`: root dataset directory (default `data`)
-- `--output_dir`: output directory (default `output-Data_Analysis`)
+## Dashboard Details
 
-### `visualize.py`
-- `--dataset_dir`: root dataset directory (default `data`)
-- `--output_dir`: output directory (default `output-Data_Analysis`)
+The interactive dashboard (`dashboard.py`) serves as the presentation layer for the analysis pipeline. It is built with **Streamlit** and visualizes the pre-computed artifacts.
 
-### `convert_to_yolo.py`
-- `--train-json`: path to train label JSON
-- `--val-json`: path to val label JSON
-- `--train-output`: output dir for train YOLO labels
-- `--val-output`: output dir for val YOLO labels
+### Architecture
+The dashboard does not perform heavy computation on the fly. Instead, it reads:
+1.  `analysis_results.json`: Statistics and metrics.
+2.  `output-Data_Analysis/visualizations/`: Static plots generated by `visualize.py`.
+3.  `runs-model/`: Training artifacts (metrics and curves) from the YOLOv11 training.
+4.  `interesting_samples/`: Annotated sample images.
+
+### Dashboard Tabs
+The interface is organized into six tabs for structured exploration:
+
+1.  **Overview & Metrics**: Executive summary displaying total image counts, disk vs. label discrepancies, and dataset health indicators (e.g., empty labels, tiny objects).
+2.  **Data Tables**: Raw data inspection allowing users to view class distribution counts, ratios, and bounding box statistics (mean/median sizes).
+3.  **Analysis Plots**: Displays high-quality static visualizations including class imbalance charts, heatmaps, and size distributions.
+4.  **Attributes**: Analyzes BDD100K-specific metadata, showing statistics for Weather, Time of Day, and Scene Type, as well as occlusion/truncation rates.
+5.  **Model Evaluation**: Automatically detects the latest YOLOv11 training run and displays its result csv metrics, training curves (F1, Precision-Recall), and validation prediction comparisons.
+6.  **Sample Images**: A gallery of "interesting" edge cases (e.g., most crowded images, largest/smallest instances per class) with overlaid metadata.
+
+## Outputs
+
+The pipeline generates artifacts in the `output-Data_Analysis` directory (located in the project root):
+
+-   **analysis_results.json**: Complete statistical record of the dataset.
+-   **visualizations/**: Folder containing PNG plots of class distributions, bounding box sizes, and attribute statistics.
+-   **interesting_samples/**: Folder containing specific images of interest (e.g., most crowded scenes, largest/smallest objects) with metadata overlays showing weather and time of day.
 
 ## Dependencies
 
-The analysis stack uses common scientific and visualization libraries (e.g., `numpy`, `pandas`, `matplotlib`, `seaborn`, `streamlit`, `Pillow`). Install from project requirements, typically:
+The analysis tools rely on standard Python data science libraries:
+-   `numpy` and `pandas` for data manipulation.
+-   `matplotlib` and `seaborn` for plotting.
+-   `streamlit` for the dashboard.
+-   `Pillow` for image processing.
 
-```bash
-pip install -r requirements_analysis.txt
-```
+Ensure all dependencies are installed via the project's requirements file.
 
----
 
 

@@ -48,7 +48,18 @@ docker run --rm bdd100k:latest help
 
 ### Step 3: Run Services
 
-**Option A: Use docker-compose (All services)**
+**Option A: Use Docker Compose (All services)**
+
+Note: depending on your system you may have either:
+- Compose plugin: `docker compose ...`
+- Legacy binary: `docker-compose ...`
+
+If neither is installed, install one (Ubuntu example):
+```bash
+sudo apt update
+sudo apt install -y docker-compose
+```
+
 ```bash
 docker-compose up -d
 ```
@@ -96,7 +107,7 @@ docker run -it --rm \
 ```bash
 docker run -it --rm --gpus all \
   -v ./data:/app/data:ro \
-  -v ./runs:/app/runs:rw \
+  -v ./runs-model:/app/runs-model:rw \
   bdd100k:latest train
 ```
 
@@ -106,14 +117,14 @@ docker run -it --rm --gpus all \
 ```bash
 docker run -it --rm --gpus all \
   -v ./data:/app/data:ro \
-  -v ./runs:/app/runs:ro \
+  -v ./runs-model:/app/runs-model:ro \
   bdd100k:latest inference
 ```
 
 **Evaluate Model**
 ```bash
 docker run -it --rm \
-  -v ./runs:/app/runs:ro \
+  -v ./runs-model:/app/runs-model:ro \
   -v ./output-Data_Analysis:/app/output-Data_Analysis:rw \
   bdd100k:latest evaluate
 ```
@@ -122,8 +133,7 @@ docker run -it --rm \
 ```bash
 docker run -it --rm --gpus all \
   -v ./data:/app/data:ro \
-  -v ./runs:/app/runs:rw \
-  -v ./outputs:/app/outputs:rw \
+  -v ./runs-model:/app/runs-model:rw \
   -v ./output-Data_Analysis:/app/output-Data_Analysis:rw \
   bdd100k:latest pipeline
 ```
@@ -149,9 +159,51 @@ docker run -it --rm -p 8888:8888 \
 **TensorBoard**
 ```bash
 docker run -it --rm -p 6006:6006 \
-  -v ./runs:/app/runs:ro \
+  -v ./runs-model:/app/runs-model:ro \
   bdd100k:latest tensorboard
 # Open: http://localhost:6006
+```
+
+---
+
+## 📦 Publish the Image (So Others Can Use It)
+
+This project’s Docker image should **not** include the dataset. Others run it by pulling the image and mounting their own `data/` and output folders.
+
+### Option A: Docker Hub
+
+```bash
+# 1) Build locally
+docker build -t bdd100k:latest -f Dockerfile .
+
+# 2) Login
+docker login
+
+# 3) Tag (replace with your Docker Hub username)
+docker tag bdd100k:latest <dockerhub-user>/bdd100k:latest
+
+# 4) Push
+docker push <dockerhub-user>/bdd100k:latest
+```
+
+Others can run:
+
+```bash
+docker pull <dockerhub-user>/bdd100k:latest
+
+docker run --rm <dockerhub-user>/bdd100k:latest help
+```
+
+### Option B: GitHub Container Registry (GHCR)
+
+```bash
+docker build -t bdd100k:latest -f Dockerfile .
+
+docker login ghcr.io
+
+docker tag bdd100k:latest ghcr.io/<github-user-or-org>/bdd100k:latest
+
+docker push ghcr.io/<github-user-or-org>/bdd100k:latest
 ```
 
 ### System Commands
@@ -239,8 +291,7 @@ docker-compose down -v
 | Container Path | Host Path | Mode | Purpose |
 |---|---|---|---|
 | `/app/data` | `./data` | ro | Input dataset (read-only) |
-| `/app/runs` | `./runs` | rw | YOLO training outputs |
-| `/app/outputs` | `./outputs` | rw | Torchvision outputs |
+| `/app/runs-model` | `./runs-model` | rw | Training outputs + exported weights |
 | `/app/output-Data_Analysis` | `./output-Data_Analysis` | rw | Analysis results |
 | `/app/notebooks` | `./notebooks` | rw | Jupyter notebooks |
 | `/app/configs` | `./configs` | ro | Configuration files |
@@ -420,7 +471,7 @@ docker cp ./data bdd100k-container:/app/data
 **Solution:**
 ```bash
 # Fix file permissions on host
-chmod -R 755 ./data ./runs ./outputs
+chmod -R 755 ./data ./runs-model ./output-Data_Analysis
 
 # Or use Docker without host mounts
 docker run --rm bdd100k:latest bash -c "cd /app && python model/train.py"
@@ -483,12 +534,12 @@ docker run -it --rm -p 8501:8501 \
 # Terminal 2: Start training
 docker run -it --rm --gpus all \
   -v ./data:/app/data:ro \
-  -v ./runs:/app/runs:rw \
+  -v ./runs-model:/app/runs-model:rw \
   bdd100k:latest train-yolo
 
 # Terminal 3: Monitor with TensorBoard
 docker run -it --rm -p 6006:6006 \
-  -v ./runs:/app/runs:ro \
+  -v ./runs-model:/app/runs-model:ro \
   bdd100k:latest tensorboard
 ```
 
@@ -498,11 +549,11 @@ docker run -it --rm -p 6006:6006 \
 # Process many images in sequence
 docker run -it --rm --gpus all \
   -v ./data:/app/data:ro \
-  -v ./outputs:/app/outputs:rw \
+  -v ./output-Data_Analysis:/app/output-Data_Analysis:rw \
   bdd100k:latest bash
 
 # Inside container
-python model/inference.py --model /app/runs/train/best.pt --source /app/data/images
+python model/inference.py --model /app/runs-model/train/best.pt --source /app/data
 ```
 
 ---

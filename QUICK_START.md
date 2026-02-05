@@ -62,7 +62,7 @@ data/bdd100k/
 docker-compose build
 
 # Run data analysis
-docker-compose up data-analysis
+docker-compose up analysis
 
 # View dashboard
 docker-compose up dashboard
@@ -86,7 +86,7 @@ python data_analysis/analysis.py
 
 ```bash
 # Using Docker (GPU required)
-docker-compose up model-training
+docker-compose up train-yolo
 
 # Or locally
 python model/train.py --model m --epochs 50 --batch 16
@@ -304,8 +304,8 @@ Configuration:
 
 1. **Test Docker Builds:**
 ```bash
-docker-compose build data-analysis
-docker-compose build model-training
+docker-compose build analysis
+docker-compose build train-yolo
 ```
 
 2. **Verify File Structure:**

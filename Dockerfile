@@ -54,8 +54,8 @@ WORKDIR /app
 # PYTHON DEPENDENCIES - All Components
 # ============================================================================
 
-# Upgrade pip, setuptools, wheel
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+# Upgrade pip and setuptools (keep wheel as provided by base image)
+RUN pip install --no-cache-dir --upgrade pip setuptools
 
 # ML/DL Core Frameworks
 RUN pip install --no-cache-dir \
@@ -68,7 +68,7 @@ RUN pip install --no-cache-dir \
     numpy==1.24.3 \
     pandas==2.0.3 \
     opencv-python==4.8.0.76 \
-    Pillow==10.0.0 \
+    Pillow==9.5.0 \
     scipy==1.11.2 \
     scikit-learn==1.3.0 \
     albumentations==1.3.1
@@ -112,11 +112,7 @@ COPY *.sh /app/
 COPY *.txt /app/
 COPY *.md /app/
 COPY *.yml /app/
-COPY *.yaml /app/
 COPY docker-compose.yml /app/
-
-# Pre-trained models (if available)
-COPY yolo11*.pt /app/
 
 # Requirements files for reference
 COPY requirements*.txt /app/

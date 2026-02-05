@@ -160,11 +160,9 @@ def display_gallery(files: List[Path], description_func: callable, cols_per_row:
         for idx, path in enumerate(batch):
             desc = description_func(path.name)
             with cols[idx]:
-                with st.container(border=True):
-                    # Replaced use_container_width (deprecated) with width="stretch"
-                    st.image(str(path), width="stretch")
-                    st.markdown(f"**{path.name}**")
-                    st.caption(desc)
+                st.image(str(path), use_column_width=True)
+                st.markdown(f"**{path.name}**")
+                st.caption(desc)
 
 
 # --- Plotting Functions ---
@@ -271,8 +269,7 @@ def main() -> None:
         st.dataframe(
             _class_table(results), 
             hide_index=True,
-            # use_container_width=True matches width="stretch" behavior in newer Streamlit
-            width="stretch", 
+            use_container_width=True, 
             column_config={
                 "Val/Train Inst Ratio": st.column_config.NumberColumn(format="%.4f"),
                 "Val/Train Img Ratio": st.column_config.NumberColumn(format="%.4f"),
@@ -283,7 +280,7 @@ def main() -> None:
         st.dataframe(
             _bbox_table(results), 
             hide_index=True,
-            width="stretch", 
+            use_container_width=True, 
             column_config={
                 "Train Mean": st.column_config.NumberColumn(format="%.1f"),
                 "Val Mean": st.column_config.NumberColumn(format="%.1f"),
@@ -323,10 +320,10 @@ def main() -> None:
         st.markdown("Percentage of objects marked as occluded or truncated per class.")
         
         st.markdown("#### Training Set")
-        st.dataframe(_attribute_table(results, "train"), width="content")
+        st.dataframe(_attribute_table(results, "train"), use_container_width=True)
         
         st.markdown("#### Validation Set")
-        st.dataframe(_attribute_table(results, "val"), width="content")
+        st.dataframe(_attribute_table(results, "val"), use_container_width=True)
 
     # --- Tab 5: Model Evaluation ---
     with tab_model:
@@ -351,7 +348,7 @@ def main() -> None:
                         final_epoch = df_results.iloc[[-1]].copy()
                         cols_to_show = [c for c in final_epoch.columns if "metrics/" in c or "loss" in c or "epoch" in c]
                         final_epoch_display = final_epoch[cols_to_show]
-                        st.dataframe(final_epoch_display, width="content", hide_index=True)
+                        st.dataframe(final_epoch_display, use_container_width=True, hide_index=True)
                     else:
                         st.warning("Results CSV is empty.")
                 except Exception as e:

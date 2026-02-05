@@ -67,8 +67,7 @@ services:
     image: bdd100k:latest
     volumes:
       - ./data:/app/data:ro
-      - ./runs:/app/runs:ro
-      - ./outputs:/app/outputs:ro
+      - ./runs-model:/app/runs-model:ro
     environment:
       - PYTHONUNBUFFERED=1
       - CUDA_VISIBLE_DEVICES=0
@@ -98,7 +97,6 @@ services:
     volumes:
       - ./data:/app/data:ro
       - ./runs-model:/app/runs-model:ro
-      - ./outputs:/app/outputs:ro
       - ./output-Data_Analysis:/app/output-Data_Analysis:rw
     environment:
       - PYTHONUNBUFFERED=1
@@ -166,7 +164,7 @@ services:
     ports:
       - "6006:6006"
     volumes:
-      - ./runs:/app/runs:ro
+      - ./runs-model:/app/runs-model:ro
     environment:
       - PYTHONUNBUFFERED=1
     command: tensorboard

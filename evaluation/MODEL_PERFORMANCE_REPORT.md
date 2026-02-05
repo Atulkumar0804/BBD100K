@@ -8,8 +8,8 @@ The following table compares the model's optimization (Loss) and performance (Me
 
 | Metric Category | Metric Name | **Training Set** | **Validation Set** | **Diff / Insight** |
 | :--- | :--- | :--- | :--- | :--- |
-| **Optimization** | **Box Loss** | 1.1878 | **1.1793** | **-0.0085** (Val is lower!) ✅ Model generalizes extremely well. |
-| **Optimization** | **Class Loss** | 0.6332 | **0.6247** | **-0.0085** (Val is lower!) ✅ No overfitting detected. |
+| **Optimization** | **Box Loss** | 1.1878 | **1.1793** | **-0.0085** (Val is lower!) Model generalizes extremely well. |
+| **Optimization** | **Class Loss** | 0.6332 | **0.6247** | **-0.0085** (Val is lower!) No overfitting detected. |
 | **Optimization** | **DFL Loss** | 0.9465 | 0.9440 | **-0.0025** Consistent localization stability. |
 | **Performance** | **mAP @ 0.5** | *N/A* | **0.541 (54.1%)** | Good baseline for 20 epochs. |
 | **Performance** | **Precision** | *N/A* | **0.719 (71.9%)** | High confidence in detections (Low False Positives). |
@@ -22,9 +22,9 @@ Since the **Test Dataset (20k images)** does not contain ground-truth labels, we
 
 *   **Inference Speed:** Average ~6ms per image (Real-time capable).
 *   **Visual Check:**
-    *   ✅ **Cars/Trucks:** Detected with high confidence (>0.85) even in crowded scenes.
-    *   ⚠️ **Night Scenes:** Lower confidence detections, consistent with the reduced contrast.
-    *   ❌ **Traffic Lights:** Often missed if distant (<20px height).
+    *   **Cars/Trucks:** Detected with high confidence (>0.85) even in crowded scenes.
+    *   **Night Scenes:** (Caution) Lower confidence detections, consistent with the reduced contrast.
+    *   **Traffic Lights:** (Failure Case) Often missed if distant (<20px height).
 
 ## 4. Confusion Matrix Analysis
 *(Visual available in `output-Data_Analysis/confusion_matrix.png`)*

@@ -12,15 +12,15 @@ Based on the analysis of the BDD100K dataset, we selected YOLOv11 for the follow
 
 The YOLOv11 architecture consists of three main components:
 
-### 1️⃣ Backbone (Feature Extraction)
+### Backbone (Feature Extraction)
 *   **Structure:** CSPDarknet / EfficientNet-based custom backbone.
 *   **Function:** It acts as a Convolutional Neural Network (CNN) that processes the input image to extract features. It learns low-level features (edges, textures) in early layers and high-level semantic features (shapes, objects) in deeper layers.
 
-### 2️⃣ Neck (Feature Aggregation)
+### Neck (Feature Aggregation)
 *   **Structure:** Path Aggregation Network (PANet) / FPN.
 *   **Function:** This is the critical part for BDD100K. It combines feature maps from different scales (high resolution for small objects, low resolution for large objects). This allows the model to detect a traffic light (small) and a bus (large) in the same image with high accuracy.
 
-### 3️⃣ Head (Prediction)
+### Head (Prediction)
 *   **Structure:** Decoupled Head.
 *   **Function:** The head makes the final predictions.
     *   **Regression Branch:** Predicts the bounding box coordinates (cx, cy, w, h).
@@ -35,11 +35,18 @@ The YOLOv11 architecture consists of three main components:
 
 *   **Framework:** Ultralytics YOLO.
 *   **Pre-trained Weights:** We initialized the model with `yolo11n.pt` (COCO pre-trained) to leverage transfer learning, reducing convergence time.
-*   **Epochs:** Trained for 10 epochs.
+*   **Epochs:** Trained for 20 epochs.
 *   **Image Size:** Resized to 640x640 (standard YOLO input).
 *   **Data Augmentation:** Mosaic augmentation was used to force the model to learn context and handle occlusions (common in traffic scenes).
 
-## 4. Limitations
+## 4. Scripts Description
 
-*   **Compute Constraints:** Training was limited to 10 epochs. A full production run would typically require 50-300 epochs for optimal convergence.
+*   `model.py`: Defines the model wrapper and architecture configuration.
+*   `train.py`: Main training script using Ultralytics trainer. Handles logging and checkpointing.
+*   `inference.py`: Run inference on new images using the trained model.
+*   `dataset_loader.py`: Custom PyTorch dataset implementation for handling BDD100K data structure.
+
+## 5. Limitations
+
+*   **Compute Constraints:** Training was limited to 20 epochs. A full production run would typically require 50-300 epochs for optimal convergence.
 *   **Dataset Subset:** While we used the 100k dataset structure, hyperparameter tuning was done on a limited scope.

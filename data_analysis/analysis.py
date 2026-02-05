@@ -21,14 +21,31 @@ from parser import (
 
 
 def resolve_dataset_paths(dataset_dir: Path) -> Tuple[Path, Path, Path, Path]:
-    """Resolve dataset paths using the expected minimal structure."""
+    """Resolve dataset paths using the BDD100K structure."""
+    
+    # Auto-detect subdirectory if data is inside 'bdd100k'
+    if (dataset_dir / "bdd100k").exists() and (dataset_dir / "bdd100k" / "labels").exists():
+        dataset_dir = dataset_dir / "bdd100k"
+    
+    # Try standard BDD structure first
+    train_labels = dataset_dir / "labels" / "bdd100k_labels_images_train.json"
+    val_labels = dataset_dir / "labels" / "bdd100k_labels_images_val.json"
+    
+    # Fallback to simple structure if BDD specific files don't exist
+    if not train_labels.exists():
+        train_labels = dataset_dir / "labels" / "train.json"
+    if not val_labels.exists():
+        val_labels = dataset_dir / "labels" / "val.json"
 
-    labels_dir = dataset_dir / "labels"
-    images_dir = dataset_dir / "images"
-    train_labels = labels_dir / "train.json"
-    val_labels = labels_dir / "val.json"
-    train_images = images_dir / "train"
-    val_images = images_dir / "val"
+    train_images = dataset_dir / "images" / "100k" / "train"
+    val_images = dataset_dir / "images" / "100k" / "val"
+    
+    # Fallback for images if strict bdd structure missing
+    if not train_images.exists():
+        train_images = dataset_dir / "images" / "train"
+    if not val_images.exists():
+        val_images = dataset_dir / "images" / "val"
+
     return train_labels, val_labels, train_images, val_images
 
 
@@ -98,6 +115,34 @@ def _bbox_areas_by_class(annotations: Iterable[ImageAnnotation]) -> Dict[str, Li
     for obj in iter_all_objects(annotations):
         areas[obj.class_name].append(obj.area)
     return areas
+
+
+def _attribute_counts(annotations: Iterable[ImageAnnotation]) -> Dict[str, Dict[str, int]]:
+    """Count image-level attributes (weather, scene, timeofday)."""
+    counts = {
+        "weather": {},
+        "scene": {},
+        "timeofday": {}
+    }
+    for img in annotations:
+        counts["weather"][img.weather] = counts["weather"].get(img.weather, 0) + 1
+        counts["scene"][img.scene] = counts["scene"].get(img.scene, 0) + 1
+        counts["timeofday"][img.timeofday] = counts["timeofday"].get(img.timeofday, 0) + 1
+    return counts
+
+
+def _object_attribute_counts(annotations: Iterable[ImageAnnotation]) -> Dict[str, Dict[str, int]]:
+    """Count object-level attributes (occluded, truncated) per class."""
+    stats = {cls: {"occluded": 0, "truncated": 0, "total": 0} for cls in DETECTION_CLASSES}
+    
+    for obj in iter_all_objects(annotations):
+        stats[obj.class_name]["total"] += 1
+        if obj.occluded:
+            stats[obj.class_name]["occluded"] += 1
+        if obj.truncated:
+            stats[obj.class_name]["truncated"] += 1
+            
+    return stats
 
 
 def _describe(values: List[int]) -> Dict[str, float]:
@@ -434,12 +479,130 @@ class BDD100KAnalyzer:
         if not self.train_data or not self.val_data:
             self.load()
 
-        self.analyze_class_distribution()
-        self.analyze_objects_per_image()
-        self.analyze_bbox_sizes()
-        self.analyze_split_balance()
-        self.find_anomalies()
+        # Run Analysis
+        print(" Analyzing Class Distribution...")
+        train_counts = _class_instance_counts(self.train_data)
+        val_counts = _class_instance_counts(self.val_data)
+
+        print(" Analyzing Image Attributes...")
+        train_attrs = _attribute_counts(self.train_data)
+        val_attrs = _attribute_counts(self.val_data)
+        
+        print(" Analyzing Object Attributes...")
+        train_obj_attrs = _object_attribute_counts(self.train_data)
+        val_obj_attrs = _object_attribute_counts(self.val_data)
+
+        print(" Analyzing Bounding Boxes...")
+        train_areas = _bbox_areas_by_class(self.train_data)
+        val_areas = _bbox_areas_by_class(self.val_data)
+
+        bbox_stats = {}
+        for cls in DETECTION_CLASSES:
+            bbox_stats[cls] = {
+                "train": _describe(train_areas[cls]),
+                "val": _describe(val_areas[cls]),
+            }
+
+        bbox_buckets_train = _size_buckets([area for areas in train_areas.values() for area in areas])
+        bbox_buckets_val = _size_buckets([area for areas in val_areas.values() for area in areas])
+
+        # Restore missing calculations
+        train_img_counts = _class_image_counts(self.train_data)
+        val_img_counts = _class_image_counts(self.val_data)
+        
+        split_balance = {
+             "total_train_images": len(self.train_data),
+             "total_val_images": len(self.val_data),
+             "val_to_train_ratio": {},
+             "val_to_train_image_ratio": {},
+             "missing_in_val": []
+        }
+        
+        for cls in DETECTION_CLASSES:
+            train_inst = train_counts.get(cls, 0)
+            val_inst = val_counts.get(cls, 0)
+            ratio_inst = val_inst / train_inst if train_inst > 0 else 0.0
+            split_balance["val_to_train_ratio"][cls] = ratio_inst
+            
+            train_img = train_img_counts.get(cls, 0)
+            val_img = val_img_counts.get(cls, 0)
+            ratio_img = val_img / train_img if train_img > 0 else 0.0
+            split_balance["val_to_train_image_ratio"][cls] = ratio_img
+            
+            if val_inst == 0 and train_inst > 0:
+                split_balance["missing_in_val"].append(cls)
+
+        # Anomalies
+        tiny_count = 0
+        tiny_per_class = {cls: 0 for cls in DETECTION_CLASSES}
+        
+        for ann in self.train_data + self.val_data:
+            for obj in ann.objects:
+                if obj.area < 50: # Arbitrary tiny threshold
+                    tiny_count += 1
+                    tiny_per_class[obj.class_name] += 1
+                    
+        anomalies = {
+             "empty_images": {
+                  "train_count": sum(1 for img in self.train_data if not img.objects),
+                  "val_count": sum(1 for img in self.val_data if not img.objects)
+             },
+             "tiny_bboxes": {
+                  "count": tiny_count,
+                  "per_class": tiny_per_class
+             }
+        }
+        
+        # New calculation for objects per image
+        train_obj_counts = [len(img.objects) for img in self.train_data]
+        val_obj_counts = [len(img.objects) for img in self.val_data]
+        
+        from collections import Counter
+        objects_per_image = {
+             "train_counts": train_obj_counts,
+             "val_counts": val_obj_counts,
+             "distribution": {
+                 "train": dict(Counter(train_obj_counts)),
+                 "val": dict(Counter(val_obj_counts))
+             }
+        }
+
+        analysis = {
+            "class_distribution": {
+                "train": {
+                    "instances": train_counts,
+                    "images": train_img_counts,
+                },
+                "val": {
+                    "instances": val_counts,
+                    "images": val_img_counts,
+                },
+            },
+            "split_balance": split_balance,
+            "anomalies": anomalies,
+            "objects_per_image": objects_per_image,
+            "attributes": {
+                "train": train_attrs,
+                "val": val_attrs
+            },
+            "object_attributes": {
+                "train": train_obj_attrs,
+                "val": val_obj_attrs
+            },
+            "bbox_sizes": {
+                "per_class": bbox_stats,
+                "buckets": {
+                    "train": bbox_buckets_train,
+                    "val": bbox_buckets_val,
+                },
+            },
+        }
+
+        self.results = analysis
+        
+        print(" Selecting Interesting Samples...")
         self.select_interesting_samples()
+        
         return self.results
 
 
@@ -472,7 +635,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dataset_dir",
         type=Path,
-        default=Path("data"),
+        default=Path("data/bdd100k"),
         help="Root dataset directory (contains images/ and labels/)",
     )
     parser.add_argument(

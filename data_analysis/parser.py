@@ -31,6 +31,8 @@ class BoundingBox:
     x2: int
     y2: int
     area: int
+    occluded: bool
+    truncated: bool
 
 
 @dataclass
@@ -41,6 +43,9 @@ class ImageAnnotation:
     width: int
     height: int
     objects: List[BoundingBox]
+    weather: str
+    scene: str
+    timeofday: str
 
 
 def _safe_int(value: float | int | None) -> int:
@@ -95,6 +100,13 @@ def parse_bdd_json(
     for image_entry in raw:
         image_name = image_entry.get("name", "")
         width, height = _extract_resolution(image_entry)
+
+        # Extract image attributes
+        attrs = image_entry.get("attributes", {})
+        weather = attrs.get("weather", "undefined")
+        scene = attrs.get("scene", "undefined")
+        timeofday = attrs.get("timeofday", "undefined")
+
         objects: List[BoundingBox] = []
 
         for label in image_entry.get("labels", []) or []:
@@ -106,6 +118,11 @@ def parse_bdd_json(
             if not box:
                 continue
 
+            # Extract object attributes
+            obj_attrs = label.get("attributes", {})
+            occluded = obj_attrs.get("occluded", False)
+            truncated = obj_attrs.get("truncated", False)
+
             x1 = _safe_int(box.get("x1"))
             y1 = _safe_int(box.get("y1"))
             x2 = _safe_int(box.get("x2"))
@@ -115,16 +132,17 @@ def parse_bdd_json(
             height_box = max(0, y2 - y1)
             area = width_box * height_box
 
-            objects.append(
-                BoundingBox(
-                    class_name=category,
-                    x1=x1,
-                    y1=y1,
-                    x2=x2,
-                    y2=y2,
-                    area=area,
-                )
+            bbox = BoundingBox(
+                class_name=category,
+                x1=x1,
+                y1=y1,
+                x2=x2,
+                y2=y2,
+                area=area,
+                occluded=occluded,
+                truncated=truncated,
             )
+            objects.append(bbox)
 
         annotations.append(
             ImageAnnotation(
@@ -132,6 +150,9 @@ def parse_bdd_json(
                 width=width,
                 height=height,
                 objects=objects,
+                weather=weather,
+                scene=scene,
+                timeofday=timeofday,
             )
         )
 

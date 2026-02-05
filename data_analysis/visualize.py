@@ -54,30 +54,71 @@ def _load_results(path: Path) -> Dict[str, object]:
         return json.load(handle)
 
 
-def _build_index(annotations: List[ImageAnnotation]) -> Dict[str, List[Tuple[str, Tuple[int, int, int, int]]]]:
-    index: Dict[str, List[Tuple[str, Tuple[int, int, int, int]]]] = {}
-    for image in annotations:
-        boxes = []
-        for obj in image.objects:
-            boxes.append((obj.class_name, (obj.x1, obj.y1, obj.x2, obj.y2)))
-        index[image.image_name] = boxes
-    return index
+def _build_index(annotations: List[ImageAnnotation]) -> Dict[str, ImageAnnotation]:
+    """Build an index for fast lookup of annotations by image name."""
+    return {ann.image_name: ann for ann in annotations}
 
 
-def _draw_boxes(image_path: Path, boxes: List[Tuple[str, Tuple[int, int, int, int]]], output_path: Path) -> None:
+def _draw_boxes(
+    image_path: Path, 
+    boxes: List[Tuple[str, Tuple[int, int, int, int]]], 
+    output_path: Path,
+    metadata: Dict[str, str] | None = None
+) -> None:
     if not image_path.exists():
         return
 
-    image = Image.open(image_path).convert("RGB")
-    draw = ImageDraw.Draw(image)
+    try:
+        image = Image.open(image_path).convert("RGBA")
+        
+        # Create a separate layer for boxes and text to handle transparency if needed
+        # For boxes we just draw on the image
+        draw = ImageDraw.Draw(image)
 
-    for class_name, (x1, y1, x2, y2) in boxes:
-        color = CLASS_COLORS.get(class_name, "red")
-        draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
-        draw.text((x1 + 2, y1 + 2), class_name, fill=color)
+        for class_name, (x1, y1, x2, y2) in boxes:
+            color = CLASS_COLORS.get(class_name, "red")
+            draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
+            draw.text((x1 + 2, y1 + 2), class_name, fill=color)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(output_path)
+        # Draw Metadata Overlay
+        if metadata:
+            # Create a semi-transparent background for the text
+            overlay = Image.new('RGBA', image.size, (0, 0, 0, 0))
+            draw_overlay = ImageDraw.Draw(overlay)
+            
+            # Box dimensions (fixed size or based on text)
+            # Assuming default font (~6x11)
+            box_w, box_h = 200, 65
+            
+            # Draw gray semi-transparent box at top-left
+            draw_overlay.rectangle(
+                [(0, 0), (box_w, box_h)], 
+                fill=(200, 200, 200, 180) # Light gray, semi-transparent
+            )
+            
+            # Composite overlay onto image
+            image = Image.alpha_composite(image, overlay)
+            draw = ImageDraw.Draw(image)
+
+            # Draw text lines in RED
+            x_pad, y_pad = 10, 10
+            line_height = 16
+            
+            lines = [
+                f"weather: {metadata.get('weather', 'unknown')}",
+                f"timeofday: {metadata.get('timeofday', 'unknown')}",
+                f"scene: {metadata.get('scene', 'unknown')}"
+            ]
+            
+            for i, line in enumerate(lines):
+                draw.text((x_pad, y_pad + i * line_height), line, fill="red")
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        # Convert back to RGB to save as JPEG
+        image.convert("RGB").save(output_path)
+        
+    except Exception as e:
+        print(f"Error drawing {image_path}: {e}")
 
 
 def plot_class_distribution(results: Dict[str, object], output_dir: Path) -> None:
@@ -163,9 +204,14 @@ def plot_objects_per_image(results: Dict[str, object], output_dir: Path) -> None
 
 def plot_objects_per_image_distribution(results: Dict[str, object], output_dir: Path) -> None:
     dist = results["objects_per_image"]["distribution"]
-    bins = list(dist["train"].keys())
-    train_values = [dist["train"][b] for b in bins]
-    val_values = [dist["val"][b] for b in bins]
+    
+    # Get union of all keys, convert to int for sorting, then back to str for lookup
+    all_keys = set(dist["train"].keys()) | set(dist["val"].keys())
+    # Handle string/int key issues from JSON
+    bins = sorted(all_keys, key=lambda x: int(x))
+    
+    train_values = [dist["train"].get(b, 0) for b in bins]
+    val_values = [dist["val"].get(b, 0) for b in bins]
 
     x = np.arange(len(bins))
     width = 0.35
@@ -204,7 +250,7 @@ def plot_bbox_sizes(annotations: List[ImageAnnotation], output_dir: Path) -> Non
 
 
 def plot_bbox_size_buckets(results: Dict[str, object], output_dir: Path) -> None:
-    buckets = results["bbox_sizes"]["train"]["size_buckets"]
+    buckets = results["bbox_sizes"]["buckets"]["train"]
     labels = list(buckets.keys())
     values = list(buckets.values())
 
@@ -219,10 +265,10 @@ def plot_bbox_size_buckets(results: Dict[str, object], output_dir: Path) -> None
 
 
 def plot_avg_bbox_area(results: Dict[str, object], output_dir: Path) -> None:
-    class_stats = results["class_distribution"]["class_stats"]
+    class_stats = results["bbox_sizes"]["per_class"]
     classes = DETECTION_CLASSES
-    train_means = [class_stats[cls]["train_avg_bbox_area"] for cls in classes]
-    val_means = [class_stats[cls]["val_avg_bbox_area"] for cls in classes]
+    train_means = [class_stats[cls]["train"]["mean"] for cls in classes]
+    val_means = [class_stats[cls]["val"]["mean"] for cls in classes]
 
     x = np.arange(len(classes))
     width = 0.35
@@ -386,8 +432,8 @@ def plot_bbox_size_histogram(train_annotations: List[ImageAnnotation], val_annot
 
 def plot_size_buckets_pie(results: Dict[str, object], output_dir: Path) -> None:
     """Create pie charts for bounding box size buckets."""
-    buckets_train = results["bbox_sizes"]["train"]["size_buckets"]
-    buckets_val = results["bbox_sizes"]["val"]["size_buckets"]
+    buckets_train = results["bbox_sizes"]["buckets"]["train"]
+    buckets_val = results["bbox_sizes"]["buckets"]["val"]
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
     
@@ -719,8 +765,8 @@ def plot_cumulative_distributions(train_annotations: List[ImageAnnotation], val_
     plt.close()
 
 
-def plot_class_imbalance_recommendations(results: Dict[str, object], output_dir: Path) -> None:
-    """Create visualization with class imbalance analysis and training recommendations."""
+def plot_class_imbalance_recommendations(results: Dict, output_dir: Path) -> None:
+    """Generate a summary card with class imbalance mitigation strategies."""
     class_dist = results["class_distribution"]
     classes = DETECTION_CLASSES
     train_counts = [class_dist["train"]["instances"][cls] for cls in classes]
@@ -820,6 +866,96 @@ def plot_class_imbalance_recommendations(results: Dict[str, object], output_dir:
     plt.close()
 
 
+def plot_scene_attributes(results: Dict, output_dir: Path) -> None:
+    """Plot distribution of scene attributes (weather, scene, timeofday)."""
+    attrs = results.get("attributes", {})
+    if not attrs:
+        return
+
+    splits = ["train", "val"]
+    categories = ["weather", "scene", "timeofday"]
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    for cat in categories:
+        data = []
+        for split in splits:
+            counts = attrs.get(split, {}).get(cat, {})
+            # Normalize to percentages
+            total = sum(counts.values())
+            for key, val in counts.items():
+                data.append({
+                    "Split": split.capitalize(),
+                    "Type": key,
+                    "Percentage": (val / total * 100) if total > 0 else 0
+                })
+        
+        if not data:
+            continue
+            
+        df = pd.DataFrame(data)
+        
+        plt.figure(figsize=(10, 6))
+        sns.barplot(data=df, x="Type", y="Percentage", hue="Split", palette="viridis")
+        
+        plt.title(f"Distribution of {cat.title()}", fontsize=14, pad=15)
+        plt.ylabel("Percentage (%)", fontsize=12)
+        plt.xlabel(cat.capitalize(), fontsize=12)
+        plt.xticks(rotation=45)
+        _add_corner_stats(plt.gca(), f"Attribute: {cat}")
+        
+        plt.tight_layout()
+        plt.savefig(output_dir / f"attribute_{cat}_distribution.png", dpi=DEFAULT_DPI)
+        plt.close()
+
+
+def plot_object_attributes(results: Dict, output_dir: Path) -> None:
+    """Plot object occlusion and truncation rates per class."""
+    obj_attrs = results.get("object_attributes", {})
+    if not obj_attrs:
+        return
+
+    splits = ["train", "val"]
+    metrics = ["occluded", "truncated"]
+    
+    for split in splits:
+        data = obj_attrs.get(split, {})
+        rows = []
+        
+        for cls, stats in data.items():
+            total = stats.get("total", 0)
+            if total > 0:
+                rows.append({
+                    "Class": cls,
+                    "Occluded": (stats.get("occluded", 0) / total) * 100,
+                    "Truncated": (stats.get("truncated", 0) / total) * 100
+                })
+        
+        if not rows:
+            continue
+            
+        df = pd.DataFrame(rows)
+        # Sort by Occluded rate
+        df = df.sort_values("Occluded", ascending=False)
+        
+        # Melt for plotting
+        df_melt = df.melt(id_vars="Class", var_name="Attribute", value_name="Percentage")
+        
+        plt.figure(figsize=(12, 6))
+        sns.barplot(data=df_melt, x="Class", y="Percentage", hue="Attribute", palette={"Occluded": "#e74c3c", "Truncated": "#3498db"})
+        
+        plt.title(f"Object Attributes by Class ({split.title()})", fontsize=14, pad=15)
+        plt.ylabel("Percentage of Objects (%)", fontsize=12)
+        plt.xlabel("Class", fontsize=12)
+        plt.xticks(rotation=45)
+        plt.grid(axis='y', alpha=0.3)
+        _add_corner_stats(plt.gca(), f"Split: {split}")
+        
+        plt.tight_layout()
+        plt.savefig(output_dir / f"object_attributes_{split}.png", dpi=DEFAULT_DPI)
+        plt.close()
+
+
 def export_interesting_samples(
     train_images_dir: Path,
     annotations: List[ImageAnnotation],
@@ -829,39 +965,59 @@ def export_interesting_samples(
     index = _build_index(annotations)
     samples = results.get("interesting_samples", {})
 
+    def get_metadata(ann: ImageAnnotation) -> Dict[str, str]:
+        return {
+            "weather": ann.weather,
+            "scene": ann.scene,
+            "timeofday": ann.timeofday
+        }
+
+    def get_boxes(ann: ImageAnnotation) -> List[Tuple[str, Tuple[int, int, int, int]]]:
+        return [(obj.class_name, (obj.x1, obj.y1, obj.x2, obj.y2)) for obj in ann.objects]
+
     for cls, info in samples.get("largest_bbox_per_class", {}).items():
         image_name = info["image"]
-        boxes = index.get(image_name, [])
-        _draw_boxes(
-            train_images_dir / image_name,
-            boxes,
-            output_dir / f"largest_{cls.replace(' ', '_')}.jpg",
-        )
+        ann = index.get(image_name)
+        if ann:
+            _draw_boxes(
+                train_images_dir / image_name,
+                get_boxes(ann),
+                output_dir / f"largest_{cls.replace(' ', '_')}.jpg",
+                metadata=get_metadata(ann)
+            )
 
     for cls, info in samples.get("smallest_bbox_per_class", {}).items():
         image_name = info["image"]
-        boxes = index.get(image_name, [])
-        _draw_boxes(
-            train_images_dir / image_name,
-            boxes,
-            output_dir / f"smallest_{cls.replace(' ', '_')}.jpg",
-        )
+        ann = index.get(image_name)
+        if ann:
+            _draw_boxes(
+                train_images_dir / image_name,
+                get_boxes(ann),
+                output_dir / f"smallest_{cls.replace(' ', '_')}.jpg",
+                metadata=get_metadata(ann)
+            )
 
     crowded = samples.get("most_crowded_image", {}).get("image")
     if crowded:
-        _draw_boxes(
-            train_images_dir / crowded,
-            index.get(crowded, []),
-            output_dir / "most_crowded.jpg",
-        )
+        ann = index.get(crowded)
+        if ann:
+            _draw_boxes(
+                train_images_dir / crowded,
+                get_boxes(ann),
+                output_dir / "most_crowded.jpg",
+                metadata=get_metadata(ann)
+            )
 
     rare_only = samples.get("rare_class_only_image")
     if rare_only:
-        _draw_boxes(
-            train_images_dir / rare_only,
-            index.get(rare_only, []),
-            output_dir / "rare_class_only.jpg",
-        )
+        ann = index.get(rare_only)
+        if ann:
+            _draw_boxes(
+                train_images_dir / rare_only,
+                get_boxes(ann),
+                output_dir / "rare_class_only.jpg",
+                metadata=get_metadata(ann)
+            )
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -937,6 +1093,10 @@ def main() -> None:
     print("  ├─ NEW: Class imbalance recommendations...")
     plot_class_imbalance_recommendations(results, vis_dir)
     
+    print("  ├─ NEW: Attribute analysis...")
+    plot_scene_attributes(results, vis_dir)
+    plot_object_attributes(results, vis_dir)
+
     print("  └─ Exporting interesting samples...")
     export_interesting_samples(
         train_images_dir,

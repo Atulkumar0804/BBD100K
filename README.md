@@ -721,4 +721,4 @@ YOLOv11:
 
 ## License
 
-This project is part of the Bosch Applied CV Assignment.
+This project is an object detection and data analysis pipeline for the BDD100K dataset.

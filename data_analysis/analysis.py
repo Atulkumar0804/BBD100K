@@ -5,11 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from parser import (
     DETECTION_CLASSES,

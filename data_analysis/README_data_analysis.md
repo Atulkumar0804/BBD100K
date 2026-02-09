@@ -3,12 +3,105 @@
 This directory contains a **complete data analysis and visualization pipeline** for the BDD100K object detection dataset. It provides comprehensive tools for parsing annotations, generating statistical reports, creating publication-quality visualizations, and hosting an interactive web-based dashboard.
 
 ## Table of Contents
-1. [Pipeline Overview](#pipeline-overview)
-2. [File-by-File Detailed Explanation](#file-by-file-detailed-explanation)
-3. [Usage Instructions](#usage-instructions)
-4. [Dashboard Features](#dashboard-features)
-5. [Output Artifacts](#output-artifacts)
-6. [Data Flow Diagram](#data-flow-diagram)
+1. [Quick Start](#quick-start)
+2. [Pipeline Overview](#pipeline-overview)
+3. [Running the Pipeline](#running-the-pipeline)
+4. [File-by-File Detailed Explanation](#file-by-file-detailed-explanation)
+5. [Dashboard Features](#dashboard-features)
+6. [Output Artifacts](#output-artifacts)
+7. [Data Flow Diagram](#data-flow-diagram)
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+```bash
+# Ensure Python 3.10+ is installed
+python3 --version
+
+# Install required packages
+pip install numpy pandas matplotlib seaborn pillow streamlit plotly ultralytics
+```
+
+### Run Complete Pipeline (5 minutes)
+
+```bash
+cd /home/atul/Desktop/atul/Bosch/bosch-bdd-object-detection
+
+# Step 1: Parse and analyze dataset
+python3 data_analysis/analysis.py
+
+# Step 2: Generate visualizations
+python3 data_analysis/visualize.py
+
+# Step 3: Launch interactive dashboard
+streamlit run data_analysis/dashboard.py
+```
+
+**Expected Output:**
+- `output-Data_Analysis/analysis_results.json` - Statistical report
+- `output-Data_Analysis/visualizations/` - 20+ PNG plots
+- `output-Data_Analysis/interesting_samples/` - 100+ annotated images
+- Dashboard at `http://localhost:8501`
+
+### Individual Commands
+
+#### 1. Parse Dataset and Generate Statistics
+```bash
+cd /home/atul/Desktop/atul/Bosch/bosch-bdd-object-detection
+
+python3 data_analysis/analysis.py \
+    --train_json data/bdd100k/labels/bdd100k_labels_images_train.json \
+    --val_json data/bdd100k/labels/bdd100k_labels_images_val.json \
+    --output_dir output-Data_Analysis
+
+# Output: analysis_results.json (5-10 MB)
+```
+
+#### 2. Generate Visualizations
+```bash
+cd /home/atul/Desktop/atul/Bosch/bosch-bdd-object-detection
+
+python3 data_analysis/visualize.py \
+    --analysis_json output-Data_Analysis/analysis_results.json \
+    --images_dir data/bdd100k/images/100k \
+    --output_dir output-Data_Analysis/visualizations
+
+# Output: 20+ PNG plots + 100+ annotated images
+```
+
+#### 3. Launch Interactive Dashboard
+```bash
+cd /home/atul/Desktop/atul/Bosch/bosch-bdd-object-detection
+
+streamlit run data_analysis/dashboard.py
+
+# Open: http://localhost:8501 (Ctrl+C to stop)
+```
+
+#### 4. Convert to YOLO Format (for model training)
+```bash
+cd /home/atul/Desktop/atul/Bosch/bosch-bdd-object-detection
+
+python3 data_analysis/convert_to_yolo.py \
+    --train_json data/bdd100k/labels/bdd100k_labels_images_train.json \
+    --val_json data/bdd100k/labels/bdd100k_labels_images_val.json \
+    --train_output data/bdd100k/labels/100k/train \
+    --val_output data/bdd100k/labels/100k/val
+
+# Output: .txt files ready for YOLOv11 training
+```
+
+#### 5. Download Dataset (if missing)
+```bash
+cd /home/atul/Desktop/atul/Bosch/bosch-bdd-object-detection
+
+python3 data_analysis/download_dataset.py
+
+# Downloads and extracts BDD100K to data/bdd100k/
+```
 
 ---
 
@@ -30,6 +123,44 @@ The pipeline performs the following **5 structured stages**:
 - **Object Attributes**: Occlusion and truncation rates per class
 - **Imbalance Metrics**: Train/Val ratios, recommended class weights
 - **Anomaly Detection**: Empty labels, tiny objects, unusual aspect ratios
+
+---
+
+## Running the Pipeline
+
+### Complete Workflow (Recommended)
+
+```bash
+cd /home/atul/Desktop/atul/Bosch/bosch-bdd-object-detection
+
+# Run all steps in sequence
+echo "Step 1: Analyzing dataset..."
+python3 data_analysis/analysis.py
+
+echo "Step 2: Generating visualizations..."
+python3 data_analysis/visualize.py
+
+echo "Step 3: Starting dashboard (Ctrl+C to stop)..."
+streamlit run data_analysis/dashboard.py
+```
+
+### Performance Expectations
+
+| Stage | Time | RAM | Output Size |
+|-------|------|-----|------------|
+| Parsing (70k images) | 5-10 sec | 500 MB | N/A |
+| Analysis | 15-30 sec | 1 GB | 5-10 MB |
+| Visualizations | 1-2 min | 2 GB | 500 MB |
+| Dashboard load | Instant | 300 MB | N/A |
+
+### Expected Dataset Statistics
+
+- **Total Images**: 70,000 training + 10,000 validation
+- **Total Objects**: 450,000+ annotations
+- **Classes**: 10 (person, rider, car, truck, bus, train, motor, bike, traffic light, traffic sign)
+- **Image Resolution**: 1280×720 pixels
+- **Empty Labels**: < 1% (data quality good)
+- **Tiny Objects**: ~2-3% (small but trainable)
 
 ---
 
@@ -460,65 +591,6 @@ python data_analysis/download_dataset.py
    d. Verify structure
 3. Print summary
 ```
-
----
-
-## Usage Instructions
-
-### Quick Start (Complete Pipeline)
-
-```bash
-# Navigate to project root
-cd bosch-bdd-object-detection
-
-# 1. Parse data and run analysis
-python -m data_analysis.analysis --dataset_dir data
-
-# 2. Generate all visualizations
-python -m data_analysis.visualize
-
-# 3. Launch interactive dashboard
-streamlit run data_analysis/dashboard.py
-
-# 4. (Optional) Convert to YOLO format for training
-python -m data_analysis.convert_to_yolo --train-json data/bdd100k/labels/bdd100k_labels_images_train.json --train-output data/bdd100k/labels/100k/train
-```
-
-### Individual Scripts
-
-#### 1. Run Analysis Only
-```bash
-python data_analysis/analysis.py --dataset_dir data --output_dir output-Data_Analysis
-```
-**Output**: `output-Data_Analysis/analysis_results.json` (5-10 MB JSON report)
-
-#### 2. Generate Visualizations Only
-```bash
-python data_analysis/visualize.py
-```
-**Output**: 
-- `output-Data_Analysis/visualizations/` (20+ PNG plots)
-- `output-Data_Analysis/interesting_samples/` (100+ annotated images)
-
-#### 3. Launch Dashboard Only
-```bash
-streamlit run data_analysis/dashboard.py
-```
-**Output**: Web app running at http://localhost:8501
-
-#### 4. Convert Labels to YOLO
-```bash
-python data_analysis/convert_to_yolo.py \
-    --train-json data/bdd100k/labels/bdd100k_labels_images_train.json \
-    --train-output data/bdd100k/labels/100k/train
-```
-**Output**: `.txt` files in `data/bdd100k/labels/100k/train/`
-
-#### 5. Download Dataset (if missing)
-```bash
-python data_analysis/download_dataset.py
-```
-**Output**: Downloads and extracts BDD100K to `data/bdd100k/`
 
 ---
 

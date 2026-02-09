@@ -1,4 +1,9 @@
-"""Evaluate YOLOv11 and torchvision detectors on BDD100K validation set."""
+"""
+Evaluate YOLOv11 model on BDD100K validation set using YOLO's native validation.
+
+This script uses YOLO's built-in validation routine which properly computes mAP metrics
+using the official COCO evaluation protocol.
+"""
 
 from __future__ import annotations
 
@@ -6,118 +11,159 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List
 
-import numpy as np
 import torch
-from PIL import Image
 from ultralytics import YOLO
 
 # Add parent directory to path to resolve imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from data_analysis.parser import DETECTION_CLASSES, parse_bdd_json
-from evaluation.metrics import DetectionMetrics
+from data_analysis.parser import DETECTION_CLASSES
 
 
-def run_yolo_eval(
-    model: YOLO,
-    annotations,
-    images_dir: Path,
-    max_images: int,
-    device: str,
-    conf_threshold: float = 0.25,
-) -> Dict[str, object]:
-    metrics = DetectionMetrics(num_classes=len(DETECTION_CLASSES), class_names=DETECTION_CLASSES)
-
-    for idx, image_ann in enumerate(annotations[:max_images]):
-        image_path = images_dir / image_ann.image_name
-        if not image_path.exists():
-            continue
-
-        image = Image.open(image_path).convert("RGB")
-        results = model.predict(
-            source=np.array(image),
-            device=device,
-            conf=conf_threshold,
-            verbose=False,
-        )
-        prediction = results[0]
-
-        boxes = prediction.boxes.xyxy.cpu().numpy().tolist() if prediction.boxes else []
-        scores = prediction.boxes.conf.cpu().numpy().tolist() if prediction.boxes else []
-        labels = prediction.boxes.cls.cpu().numpy().astype(int).tolist() if prediction.boxes else []
-
-        gt_boxes = [[obj.x1, obj.y1, obj.x2, obj.y2] for obj in image_ann.objects]
-        gt_labels = [DETECTION_CLASSES.index(obj.class_name) for obj in image_ann.objects]
-
-        metrics.update(
-            [{"boxes": boxes, "labels": labels, "scores": scores}],
-            [{"boxes": gt_boxes, "labels": gt_labels}],
-        )
-
-    return metrics.calculate_all_metrics()
-
-
-def save_metrics(results: Dict[str, object], output_path: Path) -> None:
+def save_metrics(results: dict, output_path: Path) -> None:
+    """Save metrics to JSON file."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as handle:
         json.dump(results, handle, indent=2)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate YOLOv11 model")
-    parser.add_argument("--dataset_dir", type=Path, default=Path("data/bdd100k"))
-    parser.add_argument("--max_images", type=int, default=200)
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--output_dir", type=Path, default=None)
-    parser.add_argument("--yolo_weights", type=Path, default=None)
-    parser.add_argument("--conf_threshold", type=float, default=0.25, help="Confidence threshold (default: 0.25)")
+    """Build command line argument parser."""
+    parser = argparse.ArgumentParser(
+        description="Evaluate YOLOv11 model on BDD100K validation set"
+    )
+    parser.add_argument(
+        "--data_yaml",
+        type=Path,
+        default=Path("configs/bdd100k.yaml"),
+        help="Path to dataset YAML file",
+    )
+    parser.add_argument(
+        "--imgsz",
+        type=int,
+        default=640,
+        help="Image size for validation",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda" if torch.cuda.is_available() else "cpu",
+        help="Device to use (cuda or cpu)",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=Path,
+        default=None,
+        help="Directory to save metrics",
+    )
+    parser.add_argument(
+        "--yolo_weights",
+        type=Path,
+        default=None,
+        help="Path to YOLOv11 weights",
+    )
     return parser
 
 
 def main() -> None:
+    """Run evaluation using YOLO's native validation."""
     args = build_arg_parser().parse_args()
     
     # Resolve paths relative to project root
     project_root = Path(__file__).resolve().parent.parent
     
-    # Make dataset_dir absolute if it's relative
-    if not args.dataset_dir.is_absolute():
-        args.dataset_dir = project_root / args.dataset_dir
+    if args.yolo_weights is None:
+        args.yolo_weights = (
+            project_root / "runs-model" / 
+            "bdd100k_yolo11_20epochs_20260204_234851" / "weights" / "best.pt"
+        )
     
     if args.output_dir is None:
         args.output_dir = project_root / "evaluation"
-        
-    if args.yolo_weights is None:
-        args.yolo_weights = project_root / "runs-model" / "best.pt"
-
-    val_labels = args.dataset_dir / "labels" / "bdd100k_labels_images_val.json"
-    val_images = args.dataset_dir / "images" / "100k" / "val"
-
-    annotations = parse_bdd_json(val_labels)
-
-    summary = {}
-    metrics_root = args.output_dir / "metrics"
-
-    if args.yolo_weights.exists():
-        print(f"Evaluating YOLOv11 model: {args.yolo_weights}")
-        yolo_model = YOLO(str(args.yolo_weights))
-        yolo_results = run_yolo_eval(yolo_model, annotations, val_images, args.max_images, args.device, args.conf_threshold)
-        save_metrics(yolo_results, metrics_root / "yolov11" / "metrics.json")
-        summary["yolov11"] = yolo_results.get("mAP@0.5", {}).get("mAP")
-        print(f"YOLOv11 mAP@0.5: {summary['yolov11']:.4f}")
-    else:
-        print(f"YOLOv11 weights not found at {args.yolo_weights}")
-
-    if summary:
-        summary_payload = {
-            "metric": "mAP@0.5",
-            "scores": summary,
-            "best_model": "yolov11",
-            "best_score": summary["yolov11"],
-        }
-        save_metrics(summary_payload, metrics_root / "summary.json")
+    
+    # Make paths absolute
+    if not args.yolo_weights.is_absolute():
+        args.yolo_weights = project_root / args.yolo_weights
+    if not args.data_yaml.is_absolute():
+        args.data_yaml = project_root / args.data_yaml
+    
+    print("=" * 80)
+    print("YOLO VALIDATION EVALUATION")
+    print("=" * 80)
+    print(f"\nModel weights: {args.yolo_weights}")
+    print(f"Data YAML: {args.data_yaml}")
+    print(f"Image size: {args.imgsz}")
+    print(f"Device: {args.device}")
+    
+    # Check files exist
+    if not args.yolo_weights.exists():
+        print(f"\nERROR: Model weights not found at {args.yolo_weights}")
+        return
+    
+    if not args.data_yaml.exists():
+        print(f"\nERROR: Data YAML not found at {args.data_yaml}")
+        return
+    
+    # Load model
+    print(f"\nLoading model from {args.yolo_weights}...")
+    model = YOLO(str(args.yolo_weights))
+    
+    # Run validation using YOLO's built-in validation
+    print(f"\nRunning validation on BDD100K dataset...")
+    results = model.val(
+        data=str(args.data_yaml),
+        imgsz=args.imgsz,
+        device=args.device,
+        verbose=True,
+    )
+    
+    # Extract metrics
+    metrics_data = {
+        "mAP@0.5": float(results.box.map50),
+        "mAP@0.5:0.95": float(results.box.map),
+        "precision": float(results.box.p.mean()),
+        "recall": float(results.box.r.mean()),
+        "f1": 2 * (float(results.box.p.mean()) * float(results.box.r.mean())) / 
+              (float(results.box.p.mean()) + float(results.box.r.mean()) + 1e-6),
+        "per_class_metrics": {}
+    }
+    
+    # Add per-class metrics
+    if hasattr(results.box, 'ap_class_index'):
+        for i, class_name in enumerate(DETECTION_CLASSES):
+            if i < len(results.box.ap):
+                metrics_data["per_class_metrics"][class_name] = {
+                    "AP": float(results.box.ap[i]),
+                    "AP50": float(results.box.ap50[i]) if hasattr(results.box, 'ap50') else None,
+                    "precision": float(results.box.p[i]) if i < len(results.box.p) else 0,
+                    "recall": float(results.box.r[i]) if i < len(results.box.r) else 0,
+                }
+    
+    # Save metrics
+    output_path = args.output_dir / "metrics" / "yolov11" / "metrics.json"
+    save_metrics(metrics_data, output_path)
+    
+    # Also save summary
+    summary_payload = {
+        "metric": "mAP@0.5",
+        "scores": {"yolov11": metrics_data["mAP@0.5"]},
+        "best_model": "yolov11",
+        "best_score": metrics_data["mAP@0.5"],
+    }
+    save_metrics(summary_payload, args.output_dir / "metrics" / "summary.json")
+    
+    print(f"\nValidation complete!")
+    print(f"\nResults:")
+    print(f"   mAP@0.5      : {metrics_data['mAP@0.5']:.4f}")
+    print(f"   mAP@0.5:0.95 : {metrics_data['mAP@0.5:0.95']:.4f}")
+    print(f"   Precision    : {metrics_data['precision']:.4f}")
+    print(f"   Recall       : {metrics_data['recall']:.4f}")
+    print(f"   F1 Score     : {metrics_data['f1']:.4f}")
+    print(f"\n   Metrics saved to:")
+    print(f"     - {output_path}")
+    print(f"     - {args.output_dir / 'metrics' / 'summary.json'}")
+    print("=" * 80)
 
 
 if __name__ == "__main__":

@@ -304,16 +304,7 @@ Metrics:
   Precision:     0.719 (71.9%) - Low false positives
   Recall:        0.496 (49.6%) - Some missed detections
 
-Speed:
-  Training Time: ~2 hours on RTX 3090
-  Inference:     40 FPS (GPU), 1 FPS (CPU)
 
-Class-wise Performance:
-  car:             mAP=0.65, Precision=0.75, Recall=0.60
-  person:          mAP=0.42, Precision=0.68, Recall=0.45
-  truck:           mAP=0.58, Precision=0.72, Recall=0.55
-  ... (7 more classes)
-```
 
 ### Improvement Opportunities
 
@@ -544,68 +535,56 @@ docker info
 #### Step 1: Pull Docker Image
 
 ```bash
-docker pull aks08041997/atul_bosch:latest
+docker pull aks08041997/atul_bosch_bbd100k:latest
 
 # Verify image is available
 docker images
 # Expected output:
 # REPOSITORY                 TAG       IMAGE ID      SIZE
-# aks08041997/atul_bosch     latest    <id>          14.6GB
+# aks08041997/atul_bosch_bbd100k     latest    <id>          14.6GB
 ```
 
 #### Step 2: Run Container (Interactive Mode)
 
 ```bash
-docker run -it \
-  -p 8501:8501 \
-  aks08041997/atul_bosch:latest \
-  /bin/bash
+
+docker run -it -p 8501:8501 aks08041997/atul_bosch_bbd100k:latest /bin/bash
+
 ```
 
 **What each flag does:**
 - `-i` → Interactive (keep stdin open even if not attached)
 - `-t` → Allocate pseudo-terminal
 - `-p 8501:8501` → Map host port 8501 to container port 8501 (Streamlit)
-- `aks08041997/atul_bosch:latest` → Docker image to run
+- `aks08041997/atul_bosch_bbd100k:latest` → Docker image to run
 - `/bin/bash` → Open bash shell inside container
 
-#### Step 3: Inside Container - Verify Setup
+
+
+#### Step 3: Run Data Analysis (in Container)
 
 ```bash
-# Check Python
-python --version
-# Expected: Python 3.10.x
-
-# Check CUDA (if available)
-nvidia-smi
-# Shows GPU info if available
-
 # Check project structure
 ls -la
+
 # Should see: bosch-bdd-object-detection/
 
 cd bosch-bdd-object-detection
-```
-
-#### Step 4: Run Data Analysis (in Container)
-
-```bash
-cd data_analysis
 
 # Run analysis
-python analysis.py
+python data_analysis/analysis.py
 # Output: analysis_results.json (5-10 MB)
 
 # Generate visualizations
-python visualize.py
+python data_analysis/visualize.py
 # Output: 20+ PNG files in output-Data_Analysis/visualizations/
 ```
 
-#### Step 5: Launch Streamlit Dashboard (in Container)
+#### Step 4: Launch Streamlit Dashboard (in Container)
 
 In container, run:
 ```bash
-streamlit run data_analysis/dashboard.py
+streamlit run data_analysis/dashboard.py --server.address 0.0.0.0 --server.port 8501
 ```
 
 **In your host machine browser, open:**
@@ -621,7 +600,11 @@ You'll see interactive tabs:
 - Model Evaluation (training results)
 - Sample Images (annotated examples)
 
-#### Step 6: Train Model (in Container)
+#### Why Streamlit Works on localhost in Docker (and Not on Other URLs)
+
+When Streamlit is run inside a Docker container with --server.address 0.0.0.0, the Linux kernel binds the server to all network interfaces inside the container’s network namespace; 0.0.0.0 is not a real IP and can only be used for listening, never for connecting. Streamlit therefore listens on the container’s internal interfaces (such as eth0 and 127.0.0.1) and reports container-scoped addresses like 172.17.x.x, which belong to Docker’s private bridge network and are not routable from the host machine. Similarly, any “External URL” printed by Streamlit is informational and does not imply host-level exposure. Actual access from the host browser works only via http://localhost:8501 because Docker explicitly creates NAT (iptables) rules when the container is started with -p 8501:8501, forwarding traffic from the host’s loopback interface to the container port. Streamlit cannot print localhost because, from inside the container, localhost refers to the container itself and Docker port mappings are invisible to the application. This behavior is correct, secure, and expected in containerized environments
+
+#### Step 5: Train Model (in Container)
 
 In container, run:
 ```bash
@@ -632,7 +615,7 @@ python train.py
 # Output: weights, logs, and metrics saved to ../runs-model/
 ```
 
-#### Step 7: Run Evaluation (in Container)
+#### Step 6: Run Evaluation (in Container)
 
 In container, run:
 ```bash
@@ -644,7 +627,7 @@ python run_model_eval.py
 # Output: metrics and plots in evaluation/metrics/
 ```
 
-#### Step 8: Exit Container
+#### Step 7: Exit Container
 
 ```bash
 exit
@@ -664,26 +647,6 @@ exit
 | `output-Data_Analysis/` | Generated analysis reports and plots | After running analysis.py |
 | `runs-model/` | Training outputs (weights, logs, curves) | After running train.py |
 | `notebooks/` | Jupyter notebooks for exploration | Part of repo |
-
----
-
-## Troubleshooting
-
-### Issue: Docker image is very large (14.6GB)
-
-**Solution:** The image includes all dependencies and some pre-built models. This is expected for a complete ML pipeline.
-
-### Issue: Streamlit dashboard won't load
-
-**Solution:** Make sure port 8501 is mapped with `-p 8501:8501` when running the container.
-
-### Issue: GPU not detected in container
-
-**Solution:** Install NVIDIA Docker runtime. See [NVIDIA Docker installation guide](https://github.com/NVIDIA/nvidia-docker).
-
-### Issue: Out of memory during training
-
-**Solution:** Reduce batch size in train.py (default is 16, try 8).
 
 ---
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -17,6 +18,9 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from PIL import Image, ImageDraw
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from parser import DETECTION_CLASSES, ImageAnnotation, parse_bdd_json
 

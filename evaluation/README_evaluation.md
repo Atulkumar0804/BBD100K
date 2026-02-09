@@ -2,6 +2,20 @@
 
 This directory contains a **complete evaluation and analysis suite** for the YOLOv11 object detection model trained on BDD100K. It provides tools to compute metrics, visualize predictions, analyze errors, and generate comprehensive performance reports.
 
+## ⚠️ IMPORTANT: Metrics Issue RESOLVED
+
+**Status**: The custom evaluation metrics had a bug (mAP was calculating incorrectly).
+
+**Solution**: Use `run_model_eval_improved.py` instead of `run_model_eval.py`
+
+**Latest Results (CORRECTED)**:
+- **mAP@0.5: 0.5415** ✅ (verified with YOLO's native validation)
+- **mAP@0.5:0.95: 0.3131** ✅ (COCO metric)
+- **Precision: 0.7190**
+- **Recall: 0.4966**
+
+See `METRICS_RESOLUTION_SUMMARY.md` for full details on the root cause and fix.
+
 ## Table of Contents
 1. [Module Overview](#module-overview)
 2. [File-by-File Detailed Explanation](#file-by-file-detailed-explanation)

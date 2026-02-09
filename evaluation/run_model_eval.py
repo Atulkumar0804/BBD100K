@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Dict, List
 
@@ -11,6 +12,9 @@ import numpy as np
 import torch
 from PIL import Image
 from ultralytics import YOLO
+
+# Add parent directory to path to resolve imports
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from data_analysis.parser import DETECTION_CLASSES, parse_bdd_json
 from evaluation.metrics import DetectionMetrics
@@ -22,6 +26,7 @@ def run_yolo_eval(
     images_dir: Path,
     max_images: int,
     device: str,
+    conf_threshold: float = 0.25,
 ) -> Dict[str, object]:
     metrics = DetectionMetrics(num_classes=len(DETECTION_CLASSES), class_names=DETECTION_CLASSES)
 
@@ -34,7 +39,7 @@ def run_yolo_eval(
         results = model.predict(
             source=np.array(image),
             device=device,
-            conf=0.25,
+            conf=conf_threshold,
             verbose=False,
         )
         prediction = results[0]
@@ -62,11 +67,12 @@ def save_metrics(results: Dict[str, object], output_path: Path) -> None:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate YOLOv11 model")
-    parser.add_argument("--dataset_dir", type=Path, default=Path("data"))
+    parser.add_argument("--dataset_dir", type=Path, default=Path("data/bdd100k"))
     parser.add_argument("--max_images", type=int, default=200)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--output_dir", type=Path, default=None)
     parser.add_argument("--yolo_weights", type=Path, default=None)
+    parser.add_argument("--conf_threshold", type=float, default=0.25, help="Confidence threshold (default: 0.25)")
     return parser
 
 
@@ -76,14 +82,18 @@ def main() -> None:
     # Resolve paths relative to project root
     project_root = Path(__file__).resolve().parent.parent
     
+    # Make dataset_dir absolute if it's relative
+    if not args.dataset_dir.is_absolute():
+        args.dataset_dir = project_root / args.dataset_dir
+    
     if args.output_dir is None:
         args.output_dir = project_root / "evaluation"
         
     if args.yolo_weights is None:
-        args.yolo_weights = project_root / "runs-model" / "train" / "best.pt"
+        args.yolo_weights = project_root / "runs-model" / "best.pt"
 
-    val_labels = args.dataset_dir / "labels" / "val.json"
-    val_images = args.dataset_dir / "images" / "val"
+    val_labels = args.dataset_dir / "labels" / "bdd100k_labels_images_val.json"
+    val_images = args.dataset_dir / "images" / "100k" / "val"
 
     annotations = parse_bdd_json(val_labels)
 
@@ -93,7 +103,7 @@ def main() -> None:
     if args.yolo_weights.exists():
         print(f"Evaluating YOLOv11 model: {args.yolo_weights}")
         yolo_model = YOLO(str(args.yolo_weights))
-        yolo_results = run_yolo_eval(yolo_model, annotations, val_images, args.max_images, args.device)
+        yolo_results = run_yolo_eval(yolo_model, annotations, val_images, args.max_images, args.device, args.conf_threshold)
         save_metrics(yolo_results, metrics_root / "yolov11" / "metrics.json")
         summary["yolov11"] = yolo_results.get("mAP@0.5", {}).get("mAP")
         print(f"YOLOv11 mAP@0.5: {summary['yolov11']:.4f}")
